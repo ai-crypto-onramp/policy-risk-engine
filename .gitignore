@@ -4,4 +4,4 @@ vendor/
 .env
 *.log
 *.test
-/policy-risk-engine
+/policy-risk-enginecoverage.out
