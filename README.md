@@ -1,5 +1,7 @@
 # Policy / Risk Engine
 
+![CI](https://github.com/ai-crypto-onramp/policy-risk-engine/actions/workflows/ci.yml/badge.svg)
+
 Per-tx caps, velocity limits, whitelisting, source auth. Auto-approves or routes to manual review. The single gatekeeper before MPC signing.
 
 ## Overview / Responsibilities
