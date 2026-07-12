@@ -1,16 +1,25 @@
-.PHONY: build test run lint docker-build docker-run clean
+.PHONY: build test run lint docker-build docker-run clean migrate-up migrate-down
+
+DB_URL ?= postgres://postgres:postgres@localhost:5432/policy_engine?sslmode=disable
+MIGRATIONS_DIR ?= migrations
 
 build:
-	go build -o bin/server .
+	go build -o bin/policy-engine ./cmd/policy-engine
 
 test:
 	go test ./... -race -coverprofile=coverage.out -coverpkg=./...
 
 run:
-	go run .
+	go run ./cmd/policy-engine
 
 lint:
 	go vet ./...
+
+migrate-up:
+	DB_URL="$(DB_URL)" go run ./cmd/migrate up "$(MIGRATIONS_DIR)"
+
+migrate-down:
+	DB_URL="$(DB_URL)" go run ./cmd/migrate down "$(MIGRATIONS_DIR)"
 
 docker-build:
 	docker build -t ai-crypto-onramp/policy-risk-engine .

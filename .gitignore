@@ -5,4 +5,5 @@ vendor/
 *.log
 *.test
 /policy-risk-engine
+/policy-engine
 coverage.out
