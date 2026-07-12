@@ -1,0 +1,30 @@
+# Per-tier, per-asset, per-rail cap rules. Values are USD-equivalent.
+caps:
+  tx:
+    max_usd: 2500
+  daily:
+    max_usd: 10000
+  tiers:
+    tier_1:
+      daily: 2500
+      tx: 1000
+    tier_2:
+      daily: 25000
+      tx: 5000
+    tier_3:
+      daily: 100000
+      tx: 25000
+    institutional:
+      daily: 1000000
+      tx: 250000
+  rails:
+    card:
+      high_value_2fa_threshold: 1000
+    ach:
+      max_usd: 25000
+    sepa:
+      max_usd: 50000
+    pix:
+      max_usd: 10000
+    upi:
+      max_usd: 5000

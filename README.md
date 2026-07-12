@@ -336,18 +336,23 @@ Environment variables:
 # Build
 go build -o bin/policy-engine ./cmd/policy-engine
 
-# Run (requires PostgreSQL + Redis + OPA bundle service reachable)
+# Run (in-memory mode; no external deps required)
 go run ./cmd/policy-engine
+
+# Run with PostgreSQL + Redis
+docker compose up
 
 # Run tests
 go test ./... -race -cover
 
 # Lint
-golangci-lint run ./...
+go vet ./...
 
-# Rego policy tests
-opa test ./policies/...
-
-# Generate gRPC stubs
-buf generate ./proto
+# Apply / roll back DB migrations
+make migrate-up
+make migrate-down
 ```
+
+When `DB_URL` is unset the service boots in a degraded in-memory mode
+suitable for local development. Production deployments must set `DB_URL`
+and `REDIS_URL`.

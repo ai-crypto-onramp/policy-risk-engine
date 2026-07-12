@@ -1,7 +1,4 @@
 # Local development stack for the policy/risk engine.
-# Provides a PostgreSQL instance for `make migrate-up` / `make migrate-down`.
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -18,6 +15,31 @@ services:
       retries: 10
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  policy-engine:
+    build: .
+    environment:
+      DB_URL: postgres://postgres:postgres@postgres:5432/policy_engine?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      PORT: "8080"
+      POLICIES_DIR: /policies
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:

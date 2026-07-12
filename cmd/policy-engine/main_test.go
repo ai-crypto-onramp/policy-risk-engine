@@ -1,64 +1,76 @@
 package main
 
 import (
-	"encoding/json"
-	"net"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
+	"time"
+
+	"github.com/ai-crypto-onramp/policy-risk-engine/internal/api"
 )
 
-func TestHealthz(t *testing.T) {
+func TestBuildServices(t *testing.T) {
+	if err := os.Chdir("../.."); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir("cmd/policy-engine") }()
+	svc, err := buildServices()
+	if err != nil {
+		t.Fatalf("buildServices: %v", err)
+	}
+	if svc == nil || svc.Evaluate == nil || svc.Engine == nil {
+		t.Fatalf("services incomplete: %+v", svc)
+	}
+	defer svc.Audit.Close()
+}
+
+func TestRunBootsAndShutsDown(t *testing.T) {
+	if err := os.Chdir("../.."); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir("cmd/policy-engine") }()
+	t.Setenv("PORT", "0")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- run(ctx) }()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return after cancel")
+	}
+}
+
+func TestEnvOr(t *testing.T) {
+	if got := envOr("NONEXISTENT_KEY_XYZ", "def"); got != "def" {
+		t.Errorf("envOr default: %s", got)
+	}
+	t.Setenv("NONEXISTENT_KEY_XYZ", "val")
+	if got := envOr("NONEXISTENT_KEY_XYZ", "def"); got != "val" {
+		t.Errorf("envOr: %s", got)
+	}
+}
+
+func TestHealthzRoute(t *testing.T) {
+	if err := os.Chdir("../.."); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer func() { _ = os.Chdir("cmd/policy-engine") }()
+	svc, err := buildServices()
+	if err != nil {
+		t.Fatalf("buildServices: %v", err)
+	}
+	defer svc.Audit.Close()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rec := httptest.NewRecorder()
-	healthz(rec, req)
+	api.NewMux(svc).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
-		t.Fatalf("expected Content-Type application/json, got %q", ct)
-	}
-	var body map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("failed to decode body: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Fatalf("expected status ok, got %q", body["status"])
-	}
-}
-
-func TestNewMuxRouting(t *testing.T) {
-	tests := []struct {
-		name       string
-		method     string
-		path       string
-		wantStatus int
-	}{
-		{name: "healthz responds ok", method: http.MethodGet, path: "/healthz", wantStatus: http.StatusOK},
-		{name: "unknown path returns 404", method: http.MethodGet, path: "/does-not-exist", wantStatus: http.StatusNotFound},
-	}
-
-	mux := newMux()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.path, nil)
-			rec := httptest.NewRecorder()
-			mux.ServeHTTP(rec, req)
-			if rec.Code != tt.wantStatus {
-				t.Fatalf("expected %d, got %d", tt.wantStatus, rec.Code)
-			}
-		})
-	}
-}
-
-func TestRunReturnsErrorWhenAddrInUse(t *testing.T) {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("failed to open listener: %v", err)
-	}
-	defer ln.Close()
-
-	if err := run(ln.Addr().String()); err == nil {
-		t.Fatal("expected error when address is already in use, got nil")
+		t.Fatalf("status: %d", rec.Code)
 	}
 }

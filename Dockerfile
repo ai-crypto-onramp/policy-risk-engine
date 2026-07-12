@@ -1,14 +1,14 @@
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /server ./cmd/policy-engine
+RUN CGO_ENABLED=0 GOOS=linux go build -o /policy-engine ./cmd/policy-engine
 
-FROM alpine:3.20
-RUN apk add --no-cache wget
-COPY --from=builder /server /server
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=builder /policy-engine /policy-engine
+COPY policies /policies
+ENV POLICIES_DIR=/policies
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget -qO- http://localhost:8080/healthz || exit 1
-ENTRYPOINT ["/server"]
+USER nonroot:nonroot
+ENTRYPOINT ["/policy-engine"]
