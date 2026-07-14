@@ -7,7 +7,7 @@ build:
 	go build -o bin/policy-engine ./cmd/policy-engine
 
 test:
-	go test ./... -race -coverprofile=coverage.out -coverpkg=./...
+	go test ./cmd/... ./internal/... -race -coverprofile=coverage.out -coverpkg=./cmd/...,./internal/...
 
 run:
 	go run ./cmd/policy-engine
