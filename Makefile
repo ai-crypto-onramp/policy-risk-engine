@@ -13,7 +13,7 @@ run:
 	go run ./cmd/policy-engine
 
 lint:
-	go vet ./...
+	golangci-lint run
 
 migrate-up:
 	DB_URL="$(DB_URL)" go run ./cmd/migrate up "$(MIGRATIONS_DIR)"
