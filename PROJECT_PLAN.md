@@ -184,8 +184,8 @@ audit-event-log.
 
 ## Stage 10 — Tests, Coverage & Docker
 
-**Goal:** Harden the service for production: comprehensive test suite, coverage
-gating, Rego policy tests, and a reproducible container image.
+**Goal:** Harden the service for production: comprehensive test suite,
+Rego policy tests, and a reproducible container image.
 
 **Tasks:**
 - [x] Add `opa test ./policies/...` to CI for Rego unit tests.
