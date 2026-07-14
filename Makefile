@@ -1,7 +1,4 @@
-.PHONY: build test run lint cover docker-build docker-run clean migrate-up migrate-down
-
-DB_URL ?= postgres://postgres:postgres@localhost:5432/policy_engine?sslmode=disable
-MIGRATIONS_DIR ?= migrations
+.PHONY: build test run lint coverage docker-build docker-run clean migrate-up migrate-down
 
 build:
 	go build -o bin/policy-engine ./cmd/policy-engine
@@ -15,14 +12,14 @@ run:
 lint:
 	golangci-lint run
 
-cover: test
+coverage: test
 	go tool cover -func=coverage.out | tail -1
 
 migrate-up:
-	DB_URL="$(DB_URL)" go run ./cmd/migrate up "$(MIGRATIONS_DIR)"
+	go run ./cmd/migrate --up
 
 migrate-down:
-	DB_URL="$(DB_URL)" go run ./cmd/migrate down "$(MIGRATIONS_DIR)"
+	go run ./cmd/migrate --down
 
 docker-build:
 	docker build -t ai-crypto-onramp/policy-risk-engine .
