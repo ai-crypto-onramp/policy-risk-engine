@@ -339,9 +339,6 @@ go build -o bin/policy-engine ./cmd/policy-engine
 # Run (in-memory mode; no external deps required)
 go run ./cmd/policy-engine
 
-# Run with PostgreSQL + Redis
-docker compose up
-
 # Run tests
 go test ./... -race -cover
 
