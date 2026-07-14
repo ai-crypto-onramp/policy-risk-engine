@@ -31,7 +31,9 @@ func newTestService(t *testing.T) *Service {
 	audSink := audit.NewMemorySink()
 	audSvc := audit.NewService(audSigner, audStore, audSink, 16)
 	t.Cleanup(audSvc.Close)
-	return NewService(eng, vel, capsCfg, wl, rev, audSvc).WithID(func() string { return "dec_test" })
+	svc := NewService(eng, vel, capsCfg, wl, rev, audSvc).WithID(func() string { return "dec_test" })
+	svc.sessionValidDefault = true
+	return svc
 }
 
 func newTestServiceWithWhitelist(t *testing.T, entries ...[3]string) *Service {
@@ -53,7 +55,9 @@ func newTestServiceWithWhitelist(t *testing.T, entries ...[3]string) *Service {
 	audSink := audit.NewMemorySink()
 	audSvc := audit.NewService(audSigner, audStore, audSink, 16)
 	t.Cleanup(audSvc.Close)
-	return NewService(eng, vel, capsCfg, wl, rev, audSvc).WithID(func() string { return "dec_test" }).WithNow(func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) })
+	svc := NewService(eng, vel, capsCfg, wl, rev, audSvc).WithID(func() string { return "dec_test" }).WithNow(func() time.Time { return time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC) })
+	svc.sessionValidDefault = true
+	return svc
 }
 
 func TestEvaluateAllow(t *testing.T) {

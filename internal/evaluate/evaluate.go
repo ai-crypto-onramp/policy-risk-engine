@@ -38,6 +38,7 @@ type Request struct {
 	UserTier     string  `json:"user_tier,omitempty"`
 	Session2FA   bool    `json:"session_2fa_passed,omitempty"`
 	FXRateToUSD  float64 `json:"fx_rate_to_usd,omitempty"`
+	SessionValid bool    `json:"-"`
 }
 
 // AppliedRule is a rule that fired during evaluation.
@@ -67,6 +68,11 @@ type Service struct {
 	metrics   *metrics.Metrics
 	now       func() time.Time
 	id        func() string
+	// sessionValidDefault, when true, treats requests with
+	// SessionValid==false as having a valid session. This preserves
+	// backwards-compatible behaviour for direct callers (tests, in-memory
+	// mode) that do not perform JWT validation at the transport layer.
+	sessionValidDefault bool
 }
 
 // NewService returns an evaluate Service.
@@ -94,6 +100,13 @@ func (s *Service) WithNow(now func() time.Time) *Service {
 func (s *Service) WithID(id func() string) *Service {
 	s.id = id
 	return s
+}
+
+// SetSessionValidDefault configures whether requests without an explicit
+// SessionValid are treated as having a valid session. Set to true for local
+// dev / in-memory mode where JWT validation is not performed at the transport.
+func (s *Service) SetSessionValidDefault(v bool) {
+	s.sessionValidDefault = v
 }
 
 func newID() string {
@@ -124,7 +137,8 @@ func (s *Service) Evaluate(ctx context.Context, req Request) (Response, error) {
 
 	// 1. Source auth.
 	requires2FA := s.caps.HighValue2FARequired(req.Rail, amountUSD)
-	authResult := whitelist.CheckSourceAuth(true, requires2FA, req.Session2FA)
+	sessionValid := req.SessionValid || s.sessionValidDefault
+	authResult := whitelist.CheckSourceAuth(sessionValid, requires2FA, req.Session2FA)
 	if !authResult.OK {
 		return s.finalize(ctx, req, "deny", append(reasons, authResult.Reason), appliedRules, 1.0, audit.Request{
 			UserID: req.UserID, Amount: req.Amount, Currency: req.Currency, Asset: req.Asset,

@@ -42,14 +42,22 @@ type Store interface {
 
 // Service is the review queue service.
 type Service struct {
-	store Store
-	now   func() time.Time
-	mu    sync.Mutex
+	store    Store
+	notifier *Notifier
+	now      func() time.Time
+	mu       sync.Mutex
 }
 
 // NewService returns a review queue Service.
 func NewService(store Store) *Service {
 	return &Service{store: store, now: time.Now}
+}
+
+// WithNotifier attaches a Notifier so that Resolve posts the resolved item to
+// the Transaction Orchestrator webhook.
+func (s *Service) WithNotifier(n *Notifier) *Service {
+	s.notifier = n
+	return s
 }
 
 // WithNow overrides the clock (for testing).
@@ -81,7 +89,9 @@ func (s *Service) Park(ctx context.Context, decisionID, txID string) (Item, erro
 }
 
 // Resolve transitions a pending item to resolved with the given resolution.
-// Re-resolving an already-resolved item returns ErrAlreadyResolved.
+// Re-resolving an already-resolved item returns ErrAlreadyResolved. When a
+// Notifier is configured, the resolved item is posted to the Transaction
+// Orchestrator webhook so the saga can resume.
 func (s *Service) Resolve(ctx context.Context, decisionID, assignee, resolution string) (Item, error) {
 	if resolution != ResolutionAllow && resolution != ResolutionDeny {
 		return Item{}, ErrInvalidResolution
@@ -105,6 +115,9 @@ func (s *Service) Resolve(ctx context.Context, decisionID, assignee, resolution 
 	item.ResolvedAt = &now
 	if err := s.store.Update(item); err != nil {
 		return Item{}, err
+	}
+	if s.notifier != nil && s.notifier.Enabled() {
+		_ = s.notifier.NotifyResolution(ctx, item)
 	}
 	return item, nil
 }

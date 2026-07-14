@@ -3,6 +3,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,6 +26,12 @@ type Services struct {
 	Review    *review.Service
 	Audit     *audit.Service
 	Engine    engine.Engine
+	Auth      *AuthConfig
+	DB        *sql.DB
+	// HTTPAddr / GRPCAddr are populated by the server constructors for
+	// integration tests and discovery. They are not used by the handlers.
+	HTTPAddr string
+	GRPCAddr string
 }
 
 // NewMux returns the HTTP handler with all routes registered.
@@ -40,7 +47,8 @@ func NewMux(s *Services) http.Handler {
 	mux.HandleFunc("GET /v1/policy/review", listReviewHandler(s))
 	mux.HandleFunc("GET /v1/policy/rules", listRulesHandler(s))
 	mux.HandleFunc("GET /v1/policy/rules/{version}", getRuleHandler(s))
-	return mux
+	mux.HandleFunc("POST /v1/policy/rules", publishRulesHandler(s))
+	return authMiddleware(s.Auth, mux)
 }
 
 // NewServer wires middleware and returns an *http.Server.
@@ -142,6 +150,21 @@ func evaluateHandler(s *Services) http.HandlerFunc {
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, err)
 			return
+		}
+		// Validate the JWT session on the REST evaluate path. When auth is
+		// disabled (local dev) the session is treated as valid. When enabled,
+		// a valid bearer token must be present; scope checks are not applied
+		// to evaluate (any authenticated caller may invoke it).
+		req.SessionValid = true
+		if s.Auth != nil && s.Auth.Enabled() {
+			claims, err := s.Auth.validateBearer(r)
+			if err != nil {
+				writeError(w, newAppError("unauthorized", err.Error(), http.StatusUnauthorized))
+				return
+			}
+			ctx := context.WithValue(r.Context(), claimsKey{}, claims)
+			r = r.WithContext(ctx)
+			req.SessionValid = true
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()

@@ -39,7 +39,7 @@ expose a minimal internal `Evaluate(input) → result` entry point.
 - [x] Support loading a bundle from disk (`policies/`) and from `OPA_BUNDLE_URL` (bundle service).
 - [x] Compute and store `rego_hash` (SHA-256 of canonical Rego source) per bundle.
 - [x] Seed `policies/decisions.rego` and `policies/caps.yaml` from README examples.
-- [ ] Add `OPA_BUNDLE_POLL_INTERVAL` polling loop that downloads and stages a new bundle without activating it.
+- [x] Add `OPA_BUNDLE_POLL_INTERVAL` polling loop that downloads and stages a new bundle without activating it.
 - [x] Unit test: load a known Rego bundle and assert deterministic `allow` / `manual_review` outcomes for fixture inputs.
 
 **Acceptance criteria:**
@@ -53,12 +53,12 @@ expose a minimal internal `Evaluate(input) → result` entry point.
 documented request/response contract, backed by the OPA engine from Stage 2.
 
 **Tasks:**
-- [ ] Define `proto/policy/v1/policy.proto` with `EvaluateRequest` / `EvaluateResponse`.
-- [ ] Generate gRPC stubs via `buf generate ./proto` and commit generated code.
+- [x] Define `proto/policy/v1/policy.proto` with `EvaluateRequest` / `EvaluateResponse`.
+- [x] Generate gRPC stubs via `buf generate ./proto` and commit generated code.
 - [x] Implement REST handler with the exact JSON contract from README (decision, reasons, applied_rules, policy_version, score, decision_id).
-- [ ] Implement gRPC server mirroring the same logic.
+- [x] Implement gRPC server mirroring the same logic.
 - [x] Generate `decision_id` as `dec_<ULID>` and stamp the active `policy_version` on every response.
-- [ ] Wire mTLS for gRPC (`MTLS_CA_CERT`) and scope-checked bearer auth for REST admin paths.
+- [x] Wire mTLS for gRPC (`MTLS_CA_CERT`) and scope-checked bearer auth for REST admin paths.
 - [x] Add request validation (required fields, amount > 0, currency in allowlist).
 - [x] Add structured logging + Prometheus metrics for decision counts by outcome and latency histogram.
 
@@ -118,7 +118,7 @@ decision path and admin API.
 - [x] Implement whitelist verification flow (status transitions: `pending` → `verified` after micro-transfer / signed message confirmation).
 - [x] Inject whitelist into OPA input as `data.whitelist[user_id]` map.
 - [x] Deny non-whitelisted destinations unless a one-time override policy routes to `manual_review`.
-- [ ] Validate JWT session from Identity & Auth on the REST path; enforce scope checks for admin endpoints.
+- [x] Validate JWT session from Identity & Auth on the REST path; enforce scope checks for admin endpoints.
 - [x] Require `2fa_passed=true` when `amount_usd >= HIGH_VALUE_2FA_THRESHOLD_USD`.
 - [x] Tests: whitelisted / non-whitelisted / unverified / override paths; 2FA required and bypassed cases.
 
@@ -137,7 +137,7 @@ them into `allow` / `deny`, emitting a follow-up audit record.
 - [x] Implement `POST /v1/policy/review/:decision_id/resolve` (reviewer auth scope required).
 - [x] On resolve, update `review_queue.status=resolved`, set `resolution`, `resolved_at`, `assigned_to`.
 - [x] Emit a follow-up signed `PolicyDecisionRecord` with the final decision.
-- [ ] Notify the Transaction Orchestrator of resolution (webhook or poll endpoint) so the saga can resume.
+- [x] Notify the Transaction Orchestrator of resolution (webhook or poll endpoint) so the saga can resume.
 - [x] Tests: pending → resolved lifecycle; unauthorized reviewer rejected; double-resolve rejected.
 
 **Acceptance criteria:**
@@ -153,8 +153,8 @@ atomically via hot-reload, and keep previous versions queryable for replay.
 **Tasks:**
 - [x] Implement `GET /v1/policy/rules`, `POST /v1/policy/rules` (with `activate=true|false`), `GET /v1/policy/rules/:version`.
 - [x] On publish: create a new immutable `policy_versions` row; never mutate existing rows.
-- [ ] On activate: update `policies.active_version` in a single transaction.
-- [ ] Hot-reload: poll OPA bundle service on `POLICY_HOT_RELOAD_INTERVAL`, stage, validate hash, then atomically swap the in-memory decision engine.
+- [x] On activate: update `policies.active_version` in a single transaction.
+- [x] Hot-reload: poll OPA bundle service on `POLICY_HOT_RELOAD_INTERVAL`, stage, validate hash, then atomically swap the in-memory decision engine.
 - [x] Keep a versioned history of loaded engines for audit replay.
 - [x] Tests: publish → activate → evaluate → rollback to previous version reproduces prior decision.
 
@@ -188,13 +188,13 @@ audit-event-log.
 gating, Rego policy tests, and a reproducible container image.
 
 **Tasks:**
-- [ ] Add `opa test ./policies/...` to CI for Rego unit tests.
+- [x] Add `opa test ./policies/...` to CI for Rego unit tests.
 - [x] Reach ≥80% unit test coverage across Go packages.
-- [ ] Add integration tests (testcontainers Postgres + Redis) for the full evaluate path.
+- [x] Add integration tests (testcontainers Postgres + Redis) for the full evaluate path.
 - [x] Add golangci-lint to CI and resolve findings.
 - [x] Finalize `Dockerfile` (multi-stage, distroless or scratch runtime, non-root user).
 - [x] Add `docker-compose.yml` for local Postgres + Redis + OPA bundle mock + the service.
-- [ ] Add load test harness asserting p99 < 50ms on the gRPC evaluate path.
+- [x] Add load test harness asserting p99 < 50ms on the gRPC evaluate path.
 - [x] Update README with the finalized dev workflow.
 
 **Acceptance criteria:**

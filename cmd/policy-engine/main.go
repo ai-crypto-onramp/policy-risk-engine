@@ -47,7 +47,48 @@ func run(ctx context.Context) error {
 	if port == "" {
 		port = "8080"
 	}
+	grpcPort := os.Getenv("GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "9090"
+	}
+
 	srv := api.NewServer(services, ":"+port)
+
+	// gRPC server (mTLS-protected) on the transaction path.
+	grpcSrv, grpcLis, grpcErr := api.NewGRPCServer(services, grpcPort)
+	if grpcErr != nil {
+		log.Printf("grpc: %v (gRPC path disabled)", grpcErr)
+	} else {
+		go func() {
+			log.Printf("policy-engine gRPC listening on :%s", grpcPort)
+			if err := grpcSrv.Serve(grpcLis); err != nil {
+				log.Printf("grpc serve: %v", err)
+			}
+		}()
+	}
+
+	// Bundle hot-reload poller (Stage 2). Stages new bundles from
+	// OPA_BUNDLE_URL without activating; activation is handled by the
+	// Stage 8 hot-reload path when POLICY_HOT_RELOAD_INTERVAL is set.
+	if bundleURL := os.Getenv("OPA_BUNDLE_URL"); bundleURL != "" {
+		if opaEng, ok := services.Engine.(*engine.OPAEngine); ok {
+			// When POLICY_HOT_RELOAD_INTERVAL is set, use the HotReloader
+			// which stages + validates + atomically swaps. Otherwise use
+			// the Stage 2 Poller which only stages.
+			hotReloadSec := os.Getenv("POLICY_HOT_RELOAD_INTERVAL")
+			if hotReloadSec != "" {
+				reloader := engine.NewHotReloader(bundleURL, 0, opaEng)
+				reloader.Start(ctx)
+				defer reloader.Stop()
+			} else {
+				poller := engine.NewPoller(bundleURL, 0, opaEng, func(b *engine.Bundle) {
+					log.Printf("bundle staged v%s (hot-reload pending activation)", b.Version)
+				})
+				poller.Start(ctx)
+				defer poller.Stop()
+			}
+		}
+	}
 
 	go func() {
 		log.Printf("policy-engine listening on %s", srv.Addr)
@@ -60,6 +101,9 @@ func run(ctx context.Context) error {
 	log.Println("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if grpcSrv != nil {
+		grpcSrv.GracefulStop()
+	}
 	return srv.Shutdown(shutdownCtx)
 }
 
@@ -76,10 +120,11 @@ func buildServices(ctx context.Context) (*api.Services, error) {
 	eng := engine.NewOPAEngine(bundle)
 
 	capsCfg := caps.DefaultConfig()
+	authCfg := api.NewAuthConfig()
 
 	dsn := os.Getenv("DB_URL")
 	if dsn == "" {
-		return buildInMemoryServices(eng, &capsCfg), nil
+		return buildInMemoryServices(eng, &capsCfg, authCfg), nil
 	}
 
 	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -104,26 +149,32 @@ func buildServices(ctx context.Context) (*api.Services, error) {
 	}
 
 	wl := whitelist.NewService(wlStore)
-	rev := review.NewService(revStore)
+	rev := review.NewService(revStore).WithNotifier(review.NewNotifier())
 	// Synchronous persistence ensures the decision row exists before
 	// review.Park inserts the FK-referencing review_queue row.
 	audSvc := audit.NewService(audit.NewSigner(nil), audStore, audit.NewMemorySink(), 1024).WithSyncPersist()
 
 	vel := velocity.NewMemoryCounter()
 	evalSvc := evaluate.NewService(eng, vel, &capsCfg, wl, rev, audSvc)
+	if !authCfg.Enabled() {
+		evalSvc.SetSessionValidDefault(true)
+	}
 
-	return &api.Services{Evaluate: evalSvc, Whitelist: wl, Review: rev, Audit: audSvc, Engine: eng}, nil
+	return &api.Services{Evaluate: evalSvc, Whitelist: wl, Review: rev, Audit: audSvc, Engine: eng, Auth: authCfg, DB: database}, nil
 }
 
 // buildInMemoryServices wires the in-memory implementations used for local
 // development and tests.
-func buildInMemoryServices(eng engine.Engine, capsCfg *caps.Config) *api.Services {
+func buildInMemoryServices(eng engine.Engine, capsCfg *caps.Config, authCfg *api.AuthConfig) *api.Services {
 	vel := velocity.NewMemoryCounter()
 	wl := whitelist.NewService(whitelist.NewMemoryStore())
 	rev := review.NewService(review.NewMemoryStore())
 	audSvc := audit.NewService(audit.NewSigner(nil), audit.NewMemoryStore(), audit.NewMemorySink(), 1024)
 	evalSvc := evaluate.NewService(eng, vel, capsCfg, wl, rev, audSvc)
-	return &api.Services{Evaluate: evalSvc, Whitelist: wl, Review: rev, Audit: audSvc, Engine: eng}
+	if !authCfg.Enabled() {
+		evalSvc.SetSessionValidDefault(true)
+	}
+	return &api.Services{Evaluate: evalSvc, Whitelist: wl, Review: rev, Audit: audSvc, Engine: eng, Auth: authCfg}
 }
 
 func envOr(key, def string) string {

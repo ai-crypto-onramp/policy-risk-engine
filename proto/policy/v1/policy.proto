@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package policy.v1;
+
+option go_package = "github.com/ai-crypto-onramp/policy-risk-engine/proto/policy/v1;policypb";
+
+// Policy service exposes the synchronous evaluate gate consumed by the
+// Transaction Orchestrator on the tx saga and by the API Gateway for
+// pre-flight checks.
+service Policy {
+  // Evaluate runs the policy decision path and returns allow / deny /
+  // manual_review together with reasons, applied rules, and a signed audit
+  // decision_id.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse) {}
+}
+
+message EvaluateRequest {
+  string user_id = 1;
+  string amount = 2;
+  string currency = 3;
+  string asset = 4;
+  string rail = 5;
+  string dest_address = 6;
+  string dest_chain = 7;
+  string kyt_verdict = 8;
+  double fraud_score = 9;
+  string kyc_status = 10;
+  string user_tier = 11;
+  bool session_2fa_passed = 12;
+  double fx_rate_to_usd = 13;
+}
+
+message AppliedRule {
+  string id = 1;
+  string version = 2;
+}
+
+message EvaluateResponse {
+  string decision = 1;
+  repeated string reasons = 2;
+  repeated AppliedRule applied_rules = 3;
+  string policy_version = 4;
+  double score = 5;
+  string decision_id = 6;
+}

@@ -1,4 +1,4 @@
-.PHONY: build test run lint cover docker-build docker-run clean migrate-up migrate-down
+.PHONY: build test run lint cover docker-build docker-run clean migrate-up migrate-down proto opa-test integration integration-test loadtest
 
 build:
 	go build -o bin/policy-engine ./cmd/policy-engine
@@ -29,3 +29,15 @@ docker-run:
 
 clean:
 	rm -rf bin/ coverage.out
+
+proto:
+	buf generate
+
+opa-test:
+	opa test policies/
+
+integration integration-test:
+	INTEGRATION=1 go test ./internal/integration/... -timeout 300s
+
+loadtest:
+	go test -p 1 -run TestLoadEvaluateP99Under50ms ./internal/loadtest/... -v -timeout 120s

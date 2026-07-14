@@ -139,15 +139,43 @@ func hashBundle(src map[string]string, data map[string]any) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// HashBundle is the exported alias for hashBundle, used by callers (e.g. the
+// rules publish handler) that need to compute a deterministic bundle hash
+// without constructing a full Bundle via LoadBundleFromDir.
+func HashBundle(src map[string]string, data map[string]any) string {
+	return hashBundle(src, data)
+}
+
 // OPAEngine is an OPA-backed DecisionEngine.
 type OPAEngine struct {
 	bundle *Bundle
 	mu     sync.RWMutex
+	// compiler + store are cached per-bundle to avoid recompiling Rego on
+	// every Evaluate call. They are rebuilt only on Swap.
+	compiler *ast.Compiler
+	store    storage.Store
 }
 
 // NewOPAEngine returns an OPAEngine backed by bundle.
 func NewOPAEngine(bundle *Bundle) *OPAEngine {
-	return &OPAEngine{bundle: bundle}
+	e := &OPAEngine{bundle: bundle}
+	e.rebuild()
+	return e
+}
+
+// rebuild (re)compiles the bundle source and builds the in-memory store. Called
+// on construction and after Swap.
+func (e *OPAEngine) rebuild() {
+	if e.bundle == nil {
+		return
+	}
+	c, err := compileModules(e.bundle.Source)
+	if err != nil {
+		// Leave the previous compiler intact on compile failure.
+		return
+	}
+	e.compiler = c
+	e.store = inmem.NewFromObject(normalizeData(e.bundle.Data))
 }
 
 // Hash returns the bundle hash.
@@ -177,19 +205,25 @@ func (e *OPAEngine) Swap(b *Bundle) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.bundle = b
+	e.rebuild()
 }
 
 // Evaluate runs the Rego policy against input and returns the decision.
 func (e *OPAEngine) Evaluate(ctx context.Context, input map[string]any) (Result, error) {
 	e.mu.RLock()
 	bundle := e.bundle
+	compiler := e.compiler
+	store := e.store
 	e.mu.RUnlock()
 
-	compiler, err := compileModules(bundle.Source)
-	if err != nil {
-		return Result{}, fmt.Errorf("compile: %w", err)
+	if compiler == nil {
+		var err error
+		compiler, err = compileModules(bundle.Source)
+		if err != nil {
+			return Result{}, fmt.Errorf("compile: %w", err)
+		}
+		store = inmem.NewFromObject(normalizeData(bundle.Data))
 	}
-	store := inmem.NewFromObject(normalizeData(bundle.Data))
 
 	allow, err := evalBool(ctx, compiler, store, input, "data.policy.decisions.allow")
 	if err != nil {
