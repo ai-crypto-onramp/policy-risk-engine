@@ -16,7 +16,7 @@ func TestBuildServices(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 	defer func() { _ = os.Chdir("cmd/policy-engine") }()
-	svc, err := buildServices()
+	svc, err := buildServices(context.Background())
 	if err != nil {
 		t.Fatalf("buildServices: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestHealthzRoute(t *testing.T) {
 		t.Fatalf("chdir: %v", err)
 	}
 	defer func() { _ = os.Chdir("cmd/policy-engine") }()
-	svc, err := buildServices()
+	svc, err := buildServices(context.Background())
 	if err != nil {
 		t.Fatalf("buildServices: %v", err)
 	}

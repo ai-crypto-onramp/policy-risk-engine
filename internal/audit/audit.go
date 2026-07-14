@@ -125,6 +125,11 @@ type Service struct {
 	wg     sync.WaitGroup
 	stopCh chan struct{}
 	stopOnce sync.Once
+	// syncPersist, when true, makes Emit persist the record to the store
+	// synchronously before returning (instead of via the worker goroutine).
+	// This guarantees ordering with respect to downstream consumers that have
+	// foreign-key dependencies on the decision record (e.g. review_queue).
+	syncPersist bool
 }
 
 // NewService returns a started audit Service. queueSize is the bounded async
@@ -154,6 +159,16 @@ func (s *Service) WithNow(now func() time.Time) *Service {
 	return s
 }
 
+// WithSyncPersist enables synchronous store persistence: Emit will call
+// store.Put before returning. Use this when downstream stores have FK
+// dependencies on the persisted decision record.
+func (s *Service) WithSyncPersist() *Service {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.syncPersist = true
+	return s
+}
+
 // run is the worker goroutine that persists and publishes records.
 func (s *Service) run() {
 	defer s.wg.Done()
@@ -161,7 +176,9 @@ func (s *Service) run() {
 		select {
 		case rec := <-s.queue:
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			if s.store != nil {
+			// When syncPersist is enabled, the record was already persisted by
+			// Emit; the worker only publishes to the sink.
+			if !s.syncPersist && s.store != nil {
 				if err := s.store.Put(rec); err != nil {
 					s.drops.Add(1)
 					cancel()
@@ -192,6 +209,15 @@ func (s *Service) Emit(ctx context.Context, rec DecisionRecord) error {
 		return fmt.Errorf("sign: %w", err)
 	}
 	rec.Signature = sig
+	s.mu.Lock()
+	syncP := s.syncPersist
+	s.mu.Unlock()
+	if syncP && s.store != nil {
+		if err := s.store.Put(rec); err != nil {
+			s.drops.Add(1)
+			return fmt.Errorf("persist: %w", err)
+		}
+	}
 	select {
 	case s.queue <- rec:
 		return nil
@@ -212,6 +238,9 @@ func (s *Service) Close() {
 
 // ErrDropped is returned when the audit queue is full.
 var ErrDropped = errors.New("audit record dropped")
+
+// ErrDuplicateDecision is returned when a decision_id already exists in the store.
+var ErrDuplicateDecision = errors.New("audit decision already exists")
 
 // RequestHash computes the SHA-256 hash of the canonical-JSON encoding of req.
 func RequestHash(req Request) string {
