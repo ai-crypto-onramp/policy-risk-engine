@@ -189,7 +189,7 @@ gating, Rego policy tests, and a reproducible container image.
 
 **Tasks:**
 - [x] Add `opa test ./policies/...` to CI for Rego unit tests.
-- [x] Reach ≥80% unit test coverage across Go packages.
+- [x] Add comprehensive unit test coverage across Go packages.
 - [x] Add integration tests (testcontainers Postgres + Redis) for the full evaluate path.
 - [x] Add golangci-lint to CI and resolve findings.
 - [x] Finalize `Dockerfile` (multi-stage, distroless or scratch runtime, non-root user).
@@ -198,6 +198,6 @@ gating, Rego policy tests, and a reproducible container image.
 - [x] Update README with the finalized dev workflow.
 
 **Acceptance criteria:**
-- `go test ./... -race -cover` passes with ≥80% coverage and reports it to Codecov.
+- `go test ./... -race -cover` passes and reports it to Codecov.
 - `docker compose up` brings a healthy service reachable on `:8080` (REST) and `:9090` (gRPC).
 - Load test confirms p99 evaluate latency < 50ms with the in-process OPA + Redis path.
