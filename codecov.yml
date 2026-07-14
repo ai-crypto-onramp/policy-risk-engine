@@ -10,3 +10,5 @@ coverage:
         threshold: 1%
 
 comment: false
+ignore:
+  - "cmd/"
