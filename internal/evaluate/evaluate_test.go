@@ -34,10 +34,6 @@ func newTestService(t *testing.T) *Service {
 	return NewService(eng, vel, capsCfg, wl, rev, audSvc).WithID(func() string { return "dec_test" })
 }
 
-func addWhitelist(t *testing.T, s *Service, userID, chain, address string) {
-	t.Helper()
-}
-
 func newTestServiceWithWhitelist(t *testing.T, entries ...[3]string) *Service {
 	t.Helper()
 	b, _ := engine.LoadBundleFromDir("../../policies")
