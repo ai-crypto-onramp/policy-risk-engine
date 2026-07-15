@@ -28,7 +28,8 @@ ALTER TABLE policies
     ADD CONSTRAINT policies_active_version_fk
     FOREIGN KEY (active_version) REFERENCES policy_versions (id) ON DELETE SET NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_policy_versions_version ON policy_versions (version);
+DROP INDEX IF EXISTS idx_policy_versions_version;
+CREATE INDEX IF NOT EXISTS idx_policy_versions_version ON policy_versions (version);
 CREATE INDEX IF NOT EXISTS idx_policy_versions_policy_id ON policy_versions (policy_id);
 
 -- policy_decisions: append-only audit of every evaluation.
