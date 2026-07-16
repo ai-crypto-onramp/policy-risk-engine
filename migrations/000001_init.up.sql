@@ -24,9 +24,15 @@ CREATE TABLE IF NOT EXISTS policy_versions (
 );
 
 -- Back-reference: policies.active_version -> policy_versions.id.
-ALTER TABLE policies
-    ADD CONSTRAINT policies_active_version_fk
-    FOREIGN KEY (active_version) REFERENCES policy_versions (id) ON DELETE SET NULL;
+-- Guarded with DO $$ ... IF NOT EXISTS so the migration is idempotent and
+-- survives re-runs after `make reset-db` (which truncates schema_migrations).
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'policies_active_version_fk') THEN
+        ALTER TABLE policies
+            ADD CONSTRAINT policies_active_version_fk
+            FOREIGN KEY (active_version) REFERENCES policy_versions (id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS idx_policy_versions_version;
 CREATE INDEX IF NOT EXISTS idx_policy_versions_version ON policy_versions (version);
