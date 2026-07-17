@@ -6,8 +6,6 @@ package evaluate
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -21,6 +19,7 @@ import (
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/review"
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/velocity"
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/whitelist"
+	"github.com/google/uuid"
 )
 
 // Request is the input to the evaluate path (mirrors the README JSON body).
@@ -110,9 +109,8 @@ func (s *Service) SetSessionValidDefault(v bool) {
 }
 
 func newID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return "dec_" + hex.EncodeToString(b[:])
+	id, _ := uuid.NewV7()
+	return id.String()
 }
 
 // Evaluate runs the synchronous policy evaluation path.

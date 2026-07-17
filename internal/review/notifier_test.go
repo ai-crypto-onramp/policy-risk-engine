@@ -37,7 +37,7 @@ func TestNotifierPostsResolution(t *testing.T) {
 		body, _ := io.ReadAll(r.Body)
 		var item Item
 		_ = json.Unmarshal(body, &item)
-		if item.DecisionID != "dec_1" || item.Resolution != "allow" {
+		if item.DecisionID != "dec_1" || item.Resolution != "ALLOW" {
 			t.Errorf("item: %+v", item)
 		}
 		received.Add(1)

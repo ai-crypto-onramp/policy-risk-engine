@@ -1,25 +1,29 @@
 -- Stage 1: initial schema
 -- Creates the five durable tables for the policy/risk engine.
+-- Conventions: UUID PKs (app-generated UUIDv7, no DB default), UPPER_CASE enum
+-- TEXT (no CHECK), created_at + updated_at on every table, no DB triggers.
 
 BEGIN;
 
 -- policies: one row per logical policy scope; active_version points to policy_versions.id.
 CREATE TABLE IF NOT EXISTS policies (
-    id              BIGSERIAL    PRIMARY KEY,
-    scope           TEXT         NOT NULL,
-    active_version  BIGINT,
-    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+    id             UUID PRIMARY KEY,
+    scope          TEXT NOT NULL,
+    active_version UUID,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- policy_versions: immutable versioned Rego bundles.
 CREATE TABLE IF NOT EXISTS policy_versions (
-    id           BIGSERIAL    PRIMARY KEY,
-    policy_id    BIGINT       NOT NULL REFERENCES policies (id) ON DELETE CASCADE,
-    version      INTEGER      NOT NULL,
-    rego_hash    TEXT         NOT NULL,
-    rego_source  TEXT         NOT NULL,
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    created_by    TEXT         NOT NULL,
+    id          UUID PRIMARY KEY,
+    policy_id   UUID NOT NULL REFERENCES policies (id) ON DELETE CASCADE,
+    version     INTEGER NOT NULL,
+    rego_hash   TEXT NOT NULL,
+    rego_source TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by  TEXT NOT NULL,
     UNIQUE (policy_id, version)
 );
 
@@ -40,15 +44,16 @@ CREATE INDEX IF NOT EXISTS idx_policy_versions_policy_id ON policy_versions (pol
 
 -- policy_decisions: append-only audit of every evaluation.
 CREATE TABLE IF NOT EXISTS policy_decisions (
-    decision_id      TEXT         PRIMARY KEY,
-    policy_version   BIGINT       NOT NULL REFERENCES policy_versions (id) ON DELETE RESTRICT,
-    request_hash     TEXT         NOT NULL,
-    decision         TEXT         NOT NULL,
-    reasons          TEXT[]       NOT NULL DEFAULT '{}',
-    applied_rules    TEXT[]       NOT NULL DEFAULT '{}',
-    score            DOUBLE PRECISION,
-    signature        BYTEA,
-    created_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+    decision_id     TEXT PRIMARY KEY,
+    policy_version  UUID NOT NULL REFERENCES policy_versions (id) ON DELETE RESTRICT,
+    request_hash    TEXT NOT NULL,
+    decision        TEXT NOT NULL,
+    reasons         TEXT[] NOT NULL DEFAULT '{}',
+    applied_rules   TEXT[] NOT NULL DEFAULT '{}',
+    score           DOUBLE PRECISION,
+    signature       BYTEA,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_policy_decisions_decision_id ON policy_decisions (decision_id);
@@ -56,14 +61,15 @@ CREATE INDEX IF NOT EXISTS idx_policy_decisions_created_at ON policy_decisions (
 
 -- whitelist_addresses: user-verified destination addresses.
 CREATE TABLE IF NOT EXISTS whitelist_addresses (
-    id           BIGSERIAL    PRIMARY KEY,
-    user_id      TEXT         NOT NULL,
-    chain        TEXT         NOT NULL,
-    address      TEXT         NOT NULL,
-    label        TEXT,
-    verified_at  TIMESTAMPTZ,
-    status       TEXT         NOT NULL DEFAULT 'pending',
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    id          UUID PRIMARY KEY,
+    user_id     TEXT NOT NULL,
+    chain       TEXT NOT NULL,
+    address     TEXT NOT NULL,
+    label       TEXT,
+    verified_at TIMESTAMPTZ,
+    status      TEXT NOT NULL DEFAULT 'PENDING',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, chain, address)
 );
 
@@ -74,14 +80,15 @@ CREATE INDEX IF NOT EXISTS idx_whitelist_addresses_status ON whitelist_addresses
 
 -- review_queue: parked manual_review decisions awaiting resolution.
 CREATE TABLE IF NOT EXISTS review_queue (
-    id           BIGSERIAL    PRIMARY KEY,
-    decision_id  TEXT         NOT NULL REFERENCES policy_decisions (decision_id) ON DELETE CASCADE,
-    tx_id        TEXT,
-    status       TEXT         NOT NULL DEFAULT 'pending',
-    assigned_to  TEXT,
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    resolved_at  TIMESTAMPTZ,
-    resolution   TEXT
+    id          UUID PRIMARY KEY,
+    decision_id TEXT NOT NULL REFERENCES policy_decisions (decision_id) ON DELETE CASCADE,
+    tx_id       TEXT,
+    status      TEXT NOT NULL DEFAULT 'PENDING',
+    assigned_to TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at TIMESTAMPTZ,
+    resolution  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue (status);

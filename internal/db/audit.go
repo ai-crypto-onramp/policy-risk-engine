@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/audit"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
 
@@ -16,7 +17,7 @@ import (
 // policyVersionID is the resolved policy_versions.id used for inserts.
 type AuditStore struct {
 	db              *sql.DB
-	policyVersionID int64
+	policyVersionID uuid.UUID
 }
 
 // NewAuditStore returns a DB-backed audit store. EnsurePolicyVersion must be
@@ -34,7 +35,7 @@ func (s *AuditStore) EnsurePolicyVersion(version, regoHash, regoSource, createdB
 	if version == "" {
 		return errors.New("policy version is required")
 	}
-	if s.policyVersionID > 0 {
+	if s.policyVersionID != uuid.Nil {
 		return nil
 	}
 	ctx := context.Background()
@@ -59,46 +60,46 @@ func (s *AuditStore) EnsurePolicyVersion(version, regoHash, regoSource, createdB
 	return nil
 }
 
-func ensurePolicy(ctx context.Context, tx *sql.Tx, scope string) (int64, error) {
-	var id int64
+func ensurePolicy(ctx context.Context, tx *sql.Tx, scope string) (uuid.UUID, error) {
+	var id uuid.UUID
 	err := tx.QueryRowContext(ctx, `SELECT id FROM policies WHERE scope = $1`, scope).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("lookup policy: %w", err)
+		return uuid.Nil, fmt.Errorf("lookup policy: %w", err)
 	}
-	err = tx.QueryRowContext(ctx,
-		`INSERT INTO policies (scope) VALUES ($1) RETURNING id`, scope,
-	).Scan(&id)
-	if err != nil {
-		return 0, fmt.Errorf("insert policy: %w", err)
+	id, _ = uuid.NewV7()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO policies (id, scope) VALUES ($1, $2)`, id, scope,
+	); err != nil {
+		return uuid.Nil, fmt.Errorf("insert policy: %w", err)
 	}
 	return id, nil
 }
 
-func ensurePolicyVersion(ctx context.Context, tx *sql.Tx, policyID int64, version, regoHash, regoSource, createdBy string) (int64, error) {
+func ensurePolicyVersion(ctx context.Context, tx *sql.Tx, policyID uuid.UUID, version, regoHash, regoSource, createdBy string) (uuid.UUID, error) {
 	versionInt, err := versionToInt(version)
 	if err != nil {
-		return 0, fmt.Errorf("parse version %q: %w", version, err)
+		return uuid.Nil, fmt.Errorf("parse version %q: %w", version, err)
 	}
-	var id int64
+	id, _ := uuid.NewV7()
+	var existingID uuid.UUID
 	err = tx.QueryRowContext(ctx,
-		`INSERT INTO policy_versions (policy_id, version, rego_hash, rego_source, created_by)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO policy_versions (id, policy_id, version, rego_hash, rego_source, created_by)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (policy_id, version) DO UPDATE SET rego_hash = EXCLUDED.rego_hash
 		 RETURNING id`,
-		policyID, versionInt, regoHash, regoSource, createdBy,
-	).Scan(&id)
+		id, policyID, versionInt, regoHash, regoSource, createdBy,
+	).Scan(&existingID)
 	if err != nil {
-		return 0, fmt.Errorf("ensure policy_version: %w", err)
+		return uuid.Nil, fmt.Errorf("ensure policy_version: %w", err)
 	}
-	_, err = tx.ExecContext(ctx,
-		`UPDATE policies SET active_version = $1 WHERE id = $2`, id, policyID)
-	if err != nil {
-		return 0, fmt.Errorf("set active_version: %w", err)
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE policies SET active_version = $1, updated_at = now() WHERE id = $2`, existingID, policyID); err != nil {
+		return uuid.Nil, fmt.Errorf("set active_version: %w", err)
 	}
-	return id, nil
+	return existingID, nil
 }
 
 func versionToInt(version string) (int, error) {
@@ -120,7 +121,7 @@ func (s *AuditStore) Put(rec audit.DecisionRecord) error {
 	if rec.DecisionID == "" {
 		return errors.New("decision_id required")
 	}
-	if s.policyVersionID == 0 {
+	if s.policyVersionID == uuid.Nil {
 		return errors.New("EnsurePolicyVersion must be called before Put")
 	}
 	// reasons and applied_rules are NOT NULL DEFAULT '{}' in policy_decisions.

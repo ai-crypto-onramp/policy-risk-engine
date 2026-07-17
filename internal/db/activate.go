@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 // ActivatePolicyVersion creates a new immutable policy_versions row (or returns
@@ -17,34 +19,34 @@ import (
 // column. regoHash / regoSource / createdBy are stored on the version row.
 //
 // Returns the policy_versions.id of the activated version.
-func ActivatePolicyVersion(database *sql.DB, scope, version, regoHash, regoSource, createdBy string) (int64, error) {
+func ActivatePolicyVersion(database *sql.DB, scope, version, regoHash, regoSource, createdBy string) (uuid.UUID, error) {
 	if database == nil {
-		return 0, errors.New("db is required")
+		return uuid.Nil, errors.New("db is required")
 	}
 	if version == "" {
-		return 0, errors.New("version is required")
+		return uuid.Nil, errors.New("version is required")
 	}
 	ctx := context.Background()
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("begin tx: %w", err)
+		return uuid.Nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
 	policyID, err := ensurePolicy(ctx, tx, scope)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, err
 	}
 	vid, err := ensurePolicyVersion(ctx, tx, policyID, version, regoHash, regoSource, createdBy)
 	if err != nil {
-		return 0, err
+		return uuid.Nil, err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE policies SET active_version = $1 WHERE id = $2`, vid, policyID); err != nil {
-		return 0, fmt.Errorf("set active_version: %w", err)
+		`UPDATE policies SET active_version = $1, updated_at = now() WHERE id = $2`, vid, policyID); err != nil {
+		return uuid.Nil, fmt.Errorf("set active_version: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit: %w", err)
+		return uuid.Nil, fmt.Errorf("commit: %w", err)
 	}
 	return vid, nil
 }

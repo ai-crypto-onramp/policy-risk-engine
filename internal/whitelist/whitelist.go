@@ -12,8 +12,8 @@ import (
 
 // Status values for a whitelist entry.
 const (
-	StatusPending  = "pending"
-	StatusVerified = "verified"
+	StatusPending  = "PENDING"
+	StatusVerified = "VERIFIED"
 )
 
 // Entry is a whitelisted destination address.

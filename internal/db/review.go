@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/review"
+	"github.com/google/uuid"
 )
 
 // ReviewStore is a DB-backed review.Store backed by review_queue.
@@ -22,10 +23,11 @@ var _ review.Store = (*ReviewStore)(nil)
 
 // Put inserts item; returns review.ErrDuplicate on conflict.
 func (s *ReviewStore) Put(item review.Item) error {
+	id, _ := uuid.NewV7()
 	_, err := s.db.ExecContext(context.Background(),
-		`INSERT INTO review_queue (decision_id, tx_id, status, assigned_to, created_at, resolved_at, resolution)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		item.DecisionID, nullableText(item.TxID), item.Status,
+		`INSERT INTO review_queue (id, decision_id, tx_id, status, assigned_to, created_at, resolved_at, resolution)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		id, item.DecisionID, nullableText(item.TxID), item.Status,
 		nullableText(item.AssignedTo), item.CreatedAt,
 		nullableTimePtr(item.ResolvedAt), nullableText(item.Resolution),
 	)
@@ -85,7 +87,7 @@ func (s *ReviewStore) List(status string) ([]review.Item, error) {
 func (s *ReviewStore) Update(item review.Item) error {
 	res, err := s.db.ExecContext(context.Background(),
 		`UPDATE review_queue
-		 SET status = $1, assigned_to = $2, resolved_at = $3, resolution = $4
+		 SET status = $1, assigned_to = $2, resolved_at = $3, resolution = $4, updated_at = now()
 		 WHERE decision_id = $5`,
 		item.Status, nullableText(item.AssignedTo),
 		nullableTimePtr(item.ResolvedAt), nullableText(item.Resolution),

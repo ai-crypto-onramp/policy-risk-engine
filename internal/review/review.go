@@ -11,14 +11,14 @@ import (
 
 // Status values for a review queue item.
 const (
-	StatusPending  = "pending"
-	StatusResolved = "resolved"
+	StatusPending  = "PENDING"
+	StatusResolved = "RESOLVED"
 )
 
 // Resolution values for a resolved review.
 const (
-	ResolutionAllow = "allow"
-	ResolutionDeny  = "deny"
+	ResolutionAllow = "ALLOW"
+	ResolutionDeny  = "DENY"
 )
 
 // Item is a review_queue row.

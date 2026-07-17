@@ -130,7 +130,7 @@ func TestVerifyWhitelistHandler(t *testing.T) {
 func TestResolveReviewHandler(t *testing.T) {
 	s := newTestServices(t)
 	_, _ = s.Review.Park(context.Background(), "dec_1", "tx_1")
-	body := bytes.NewBufferString(`{"assignee":"r1","resolution":"allow"}`)
+	body := bytes.NewBufferString(`{"assignee":"r1","resolution":"ALLOW"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/policy/review/dec_1/resolve", body)
 	rec := httptest.NewRecorder()
 	NewMux(s).ServeHTTP(rec, req)
@@ -141,14 +141,14 @@ func TestResolveReviewHandler(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &item); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if item.Status != review.StatusResolved || item.Resolution != "allow" {
+	if item.Status != review.StatusResolved || item.Resolution != "ALLOW" {
 		t.Errorf("item: %+v", item)
 	}
 }
 
 func TestResolveReviewNotFound(t *testing.T) {
 	s := newTestServices(t)
-	body := bytes.NewBufferString(`{"assignee":"r","resolution":"allow"}`)
+	body := bytes.NewBufferString(`{"assignee":"r","resolution":"ALLOW"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/policy/review/nope/resolve", body)
 	rec := httptest.NewRecorder()
 	NewMux(s).ServeHTTP(rec, req)
@@ -161,7 +161,7 @@ func TestListReviewHandler(t *testing.T) {
 	s := newTestServices(t)
 	_, _ = s.Review.Park(context.Background(), "dec_1", "")
 	_, _ = s.Review.Park(context.Background(), "dec_2", "")
-	req := httptest.NewRequest(http.MethodGet, "/v1/policy/review?status=pending", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/policy/review?status=PENDING", nil)
 	rec := httptest.NewRecorder()
 	NewMux(s).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ai-crypto-onramp/policy-risk-engine/internal/whitelist"
+	"github.com/google/uuid"
 )
 
 // WhitelistStore is a DB-backed whitelist.Store backed by whitelist_addresses.
@@ -23,10 +24,11 @@ var _ whitelist.Store = (*WhitelistStore)(nil)
 
 // Add inserts e; returns whitelist.ErrDuplicate on (user_id, chain, address) conflict.
 func (s *WhitelistStore) Add(e whitelist.Entry) error {
+	id, _ := uuid.NewV7()
 	_, err := s.db.ExecContext(context.Background(),
-		`INSERT INTO whitelist_addresses (user_id, chain, address, label, verified_at, status, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		e.UserID, e.Chain, e.Address, nullableText(e.Label),
+		`INSERT INTO whitelist_addresses (id, user_id, chain, address, label, verified_at, status, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		id, e.UserID, e.Chain, e.Address, nullableText(e.Label),
 		nullableTime(e.VerifiedAt), e.Status, e.CreatedAt,
 	)
 	if err != nil {
@@ -70,7 +72,7 @@ func (s *WhitelistStore) Get(userID, chain, address string) (whitelist.Entry, bo
 func (s *WhitelistStore) Update(e whitelist.Entry) error {
 	res, err := s.db.ExecContext(context.Background(),
 		`UPDATE whitelist_addresses
-		 SET label = $1, verified_at = $2, status = $3
+		 SET label = $1, verified_at = $2, status = $3, updated_at = now()
 		 WHERE user_id = $4 AND chain = $5 AND address = $6`,
 		nullableText(e.Label), nullableTime(e.VerifiedAt), e.Status,
 		e.UserID, e.Chain, e.Address,
