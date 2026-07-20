@@ -7,10 +7,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -109,9 +111,11 @@ func run(ctx context.Context) error {
 
 // buildServices constructs the *api.Services. When DB_URL is set it connects to
 // Postgres, runs migrations, and uses DB-backed stores; otherwise it uses
-// in-memory implementations. REDIS_URL is accepted but velocity remains
-// in-memory until a Redis counter implementation exists.
+// in-memory implementations (only allowed in DEV_MODE=1). REDIS_URL is
+// accepted but velocity remains in-memory until a Redis counter
+// implementation exists; in production REDIS_URL is required.
 func buildServices(ctx context.Context) (*api.Services, error) {
+	devMode := os.Getenv("DEV_MODE") == "1"
 	bundleDir := envOr("POLICIES_DIR", "policies")
 	bundle, err := engine.LoadBundleFromDir(bundleDir)
 	if err != nil {
@@ -124,7 +128,14 @@ func buildServices(ctx context.Context) (*api.Services, error) {
 
 	dsn := os.Getenv("DB_URL")
 	if dsn == "" {
+		if !devMode {
+			return nil, fmt.Errorf("DB_URL not set and DEV_MODE!=1; refusing to start in production mode")
+		}
 		return buildInMemoryServices(eng, &capsCfg, authCfg), nil
+	}
+
+	if !devMode && os.Getenv("REDIS_URL") == "" {
+		return nil, fmt.Errorf("REDIS_URL not set and DEV_MODE!=1; refusing to start in production mode (velocity counter requires Redis)")
 	}
 
 	connectCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -152,7 +163,7 @@ func buildServices(ctx context.Context) (*api.Services, error) {
 	rev := review.NewService(revStore).WithNotifier(review.NewNotifier())
 	// Synchronous persistence ensures the decision row exists before
 	// review.Park inserts the FK-referencing review_queue row.
-	audSvc := audit.NewService(audit.NewSigner(nil), audStore, audit.NewMemorySink(), 1024).WithSyncPersist()
+	audSvc := audit.NewService(audit.NewSigner(nil), audStore, newAuditSink(), 1024).WithSyncPersist()
 
 	vel := velocity.NewMemoryCounter()
 	evalSvc := evaluate.NewService(eng, vel, &capsCfg, wl, rev, audSvc)
@@ -169,7 +180,7 @@ func buildInMemoryServices(eng engine.Engine, capsCfg *caps.Config, authCfg *api
 	vel := velocity.NewMemoryCounter()
 	wl := whitelist.NewService(whitelist.NewMemoryStore())
 	rev := review.NewService(review.NewMemoryStore())
-	audSvc := audit.NewService(audit.NewSigner(nil), audit.NewMemoryStore(), audit.NewMemorySink(), 1024)
+	audSvc := audit.NewService(audit.NewSigner(nil), audit.NewMemoryStore(), newAuditSink(), 1024)
 	evalSvc := evaluate.NewService(eng, vel, capsCfg, wl, rev, audSvc)
 	if !authCfg.Enabled() {
 		evalSvc.SetSessionValidDefault(true)
@@ -182,4 +193,40 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func newAuditSink() audit.Sink {
+	brokers := os.Getenv("KAFKA_BROKERS")
+	if brokers == "" {
+		if devMode() {
+			log.Printf("warn: KAFKA_BROKERS unset and DEV_MODE=1; audit events recorded in-memory only")
+			return audit.NewMemorySink()
+		}
+		log.Fatalf("KAFKA_BROKERS unset and DEV_MODE not set; cannot start audit producer")
+	}
+	sink, err := audit.NewKafkaSink(splitCSV(brokers))
+	if err != nil {
+		if devMode() {
+			log.Printf("warn: audit kafka init failed (DEV_MODE): %v; falling back to memory sink", err)
+			return audit.NewMemorySink()
+		}
+		log.Fatalf("audit kafka init: %v", err)
+	}
+	return sink
+}
+
+func devMode() bool {
+	v := os.Getenv("DEV_MODE")
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+func splitCSV(s string) []string {
+	out := []string{}
+	for _, p := range strings.Split(s, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

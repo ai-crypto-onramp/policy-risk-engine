@@ -14,7 +14,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
+
+const AuditTopic = "audit.v1"
 
 // DecisionRecord is the signed audit record for a policy evaluation.
 type DecisionRecord struct {
@@ -326,4 +330,67 @@ func (s *MemorySink) Records() []DecisionRecord {
 	out := make([]DecisionRecord, len(s.mem))
 	copy(out, s.mem)
 	return out
+}
+
+// KafkaSink publishes decision records wrapped in the canonical audit.v1
+// envelope (see .github/contracts/asyncapi/audit/v1/asyncapi.yaml) to the `audit.v1`
+// Kafka topic.
+type KafkaSink struct {
+	writer *kafka.Writer
+}
+
+func NewKafkaSink(brokers []string) (*KafkaSink, error) {
+	if len(brokers) == 0 {
+		return nil, fmt.Errorf("audit kafka: no brokers provided")
+	}
+	w := &kafka.Writer{
+		Addr:         kafka.TCP(brokers...),
+		Topic:        AuditTopic,
+		Balancer:     &kafka.LeastBytes{},
+		BatchTimeout: 10 * time.Millisecond,
+		RequiredAcks: kafka.RequireAll,
+	}
+	return &KafkaSink{writer: w}, nil
+}
+
+func (s *KafkaSink) Close() error {
+	if s.writer == nil {
+		return nil
+	}
+	return s.writer.Close()
+}
+
+func (s *KafkaSink) Publish(ctx context.Context, rec DecisionRecord) error {
+	if s.writer == nil {
+		return fmt.Errorf("audit kafka: not connected")
+	}
+	if rec.CreatedAt.IsZero() {
+		rec.CreatedAt = time.Now().UTC()
+	}
+	payload, err := json.Marshal(rec)
+	if err != nil {
+		return err
+	}
+	sum := sha256.Sum256(payload)
+	payloadHash := "sha256:" + hex.EncodeToString(sum[:])
+	envelope := map[string]any{
+		"schema_version": "1",
+		"id":              rec.DecisionID,
+		"ts":              rec.CreatedAt.UTC().Format(time.RFC3339Nano),
+		"source_service":  "policy-risk-engine",
+		"actor_id":        "policy-risk-engine",
+		"action":          "policy.evaluate",
+		"target_type":     "decision",
+		"target_id":       rec.DecisionID,
+		"payload_hash":    payloadHash,
+		"payload":         json.RawMessage(payload),
+	}
+	body, err := json.Marshal(envelope)
+	if err != nil {
+		return err
+	}
+	return s.writer.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(rec.DecisionID),
+		Value: body,
+	})
 }
